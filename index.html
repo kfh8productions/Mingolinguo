@@ -490,6 +490,8 @@
   }
 
   // ---- rendering ----
+  var pendingBack = null;   // answer-side content, revealed only after flip settles
+
   function showCard() {
     flipped = false;
     card.classList.remove("flipped");
@@ -504,23 +506,35 @@
     var meta = metaBits.join(" \u00b7 ");
 
     if (dir === "en2fw") {
-      // prompt English, answer Romanian
+      // prompt English (front, shown now), answer Romanian (back, held back)
       $("frontEyebrow").textContent = "English";
       $("frontWord").textContent = w.en;
       $("frontMeta").textContent = "";
-      $("backLangLabel").textContent = deck.langName;
-      $("backWord").textContent = w.fw;
-      $("backMeta").textContent = meta;       // meta with Romanian (back)
+      pendingBack = { label: deck.langName, word: w.fw, meta: meta, note: w.note || "" };
     } else {
-      // prompt Romanian, answer English
+      // prompt Romanian (front, shown now), answer English (back, held back)
       $("frontEyebrow").textContent = deck.langName;
       $("frontWord").textContent = w.fw;
-      $("frontMeta").textContent = meta;       // meta with Romanian (front)
-      $("backLangLabel").textContent = "English";
-      $("backWord").textContent = w.en;
-      $("backMeta").textContent = "";
+      $("frontMeta").textContent = meta;
+      pendingBack = { label: "English", word: w.en, meta: "", note: w.note || "" };
     }
-    $("backNote").textContent = w.note || "";
+    // back face starts blank so the answer can't be read during the spin
+    clearBack();
+  }
+
+  function clearBack() {
+    $("backLangLabel").textContent = "";
+    $("backWord").textContent = "";
+    $("backMeta").textContent = "";
+    $("backNote").textContent = "";
+  }
+
+  function revealBack() {
+    if (!pendingBack) { return; }
+    $("backLangLabel").textContent = pendingBack.label;
+    $("backWord").textContent = pendingBack.word;
+    $("backMeta").textContent = pendingBack.meta;
+    $("backNote").textContent = pendingBack.note;
   }
 
   function flip() {
@@ -528,7 +542,22 @@
     flipped = true;
     card.classList.add("flipped");
     flipHint.classList.add("hidden");
-    gradeRow.classList.remove("hidden");
+
+    // reveal answer + grade buttons only once the card has finished rotating,
+    // so the answer is never legible mid-spin
+    var revealed = false;
+    function onSettled() {
+      if (revealed) { return; }
+      revealed = true;
+      card.removeEventListener("transitionend", onSettled);
+      revealBack();
+      gradeRow.classList.remove("hidden");
+    }
+    card.addEventListener("transitionend", onSettled);
+    // fallback if transitionend doesn't fire (reduced motion / no transition)
+    var reduced = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(onSettled, reduced ? 0 : 600);
   }
 
   function next() {
